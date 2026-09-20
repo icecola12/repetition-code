@@ -1,0 +1,41 @@
+# Runtime environments and caches
+env/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local runtime configurations and credentials
+config/inference_config*.yaml
+config/deepseek.yaml
+.env
+.env.*
+
+# Generated data and experiment artifacts
+raw_data/
+data/
+output/
+run/
+log/
+logs/
+pipeline_logs/
+eval_logs*/
+exp1/
+exp2/
+expB/
+idea_2_dapo/
+stats/
+eval/
+
+# Logs, backups, and temporary files
+*.log
+*.bak
+*.bak_*
+*.back
+*.tmp
+*.filtered_tmp
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

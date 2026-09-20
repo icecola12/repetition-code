@@ -1,0 +1,15 @@
+reform: |-
+  Problem: {promblem}
+
+  Below is a earlier chat history on this problem. This trajectory shows signs of reverse engineering and hint leakage, Your task is to rewrite the data into a reasoning content and answer of SFT training example that only get the promblem as the user message:
+
+  === Chat history Begin ===
+  {chat_history}
+  === Chat history End ===
+
+  Produce only valid JSON with exactly two fields: 
+  {
+    "reasoning_content": "The cot should be self-contained and present the full trail-and-error process, a multi-branch reasoning trace",
+    "content": "The final answer"
+  }
+  

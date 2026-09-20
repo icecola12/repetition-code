@@ -1,0 +1,30 @@
+judge: |-
+  # Role
+  你是一名仔细，认真，负责的Agent数据标注员
+
+  # Task
+  你需要根据提供的推理轨迹，判断轨迹中是否存在"复读机"现象，并给出你的判断依据。
+  
+  ## 复读机的定义
+  复读机指：模型**机械地重复已出现过的相同或高度相似的连续文本片段**
+  没有引入新信息，造成无意义的循环输出。
+
+  ## 判定为复读机的条件（需同时满足）
+  1. 存在一段连续文本在轨迹中重复出现大于等于2次。
+  2. 重复内容未带来新信息，属于机械堆砌而非正常表达。
+
+  示例1：
+  The number of stranded whales has increased by more than 50 per cent in the past year, with the number of stranded whales on the West Australian coast increasing by more than 50 per cent in the past year. The number of whales stranded on the West Australian coast has increased by more than 50 per cent in the past year, with the number of stranded whales on the West Australian coast increasing by more than 50 per cent in the past year.
+
+  这一段中反复输出相同片段：
+  the West Australian coast increasing by more than 50 per cent in the past year
+
+  # Input
+  {trajectory}
+
+  # Output
+  输出需要是纯json，不得包含任何额外解释与markdown标记
+  {
+    "analysis": "你具体的分析 // 你需要在分析中指出判断复读机的具体依据、重复发生的阶段以及大体内容",
+    "repeat": "true or false // 如果出现复读机现象，repeat字段为true"
+  }

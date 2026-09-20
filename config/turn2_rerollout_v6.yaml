@@ -1,0 +1,24 @@
+rerollout: |-
+  Problem:{problem}
+  ---
+  Extra information:
+
+  Below is your earlier reasoning trajectory on this problem. This trajectory contains the "repetition" phenomenon:
+
+  === Repetition Trajectory Begin ===
+  {trajectory}
+  === Repetition Trajectory End ===
+  ---
+
+  Your response MUST follow this exact two-stage structure within your reasoning:
+
+  <meta_analysis>
+  In this section, place ALL analysis that references the extra information.
+  </meta_analysis>
+
+  <formal_reasoning>
+  In this section, output a self-contained chain-of-thought that derives
+  the solution entirely from scratch, answer with a response of your own.
+  </formal_reasoning>
+
+  Please reason step by step. Put your final answer within \boxed{}. 

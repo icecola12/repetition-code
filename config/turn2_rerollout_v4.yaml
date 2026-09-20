@@ -1,0 +1,18 @@
+rerollout: |-
+  Problem:{problem}
+  ---
+  Extra information:
+
+  Below is your earlier reasoning trajectory on this problem. This trajectory contains the "repetition" phenomenon:
+
+  === Repetition Trajectory Begin ===
+  {trajectory}
+  === Repetition Trajectory End ===
+  
+  Correct final answer of the problem:{expected_answer}
+  ---
+  After reading the trajectory above, please make sure you won't make the same mistake again.
+
+  Although you know the extra information, answer with a response of your own, including the thinking.
+
+  Please reason step by step, and put your final answer within \boxed{}.

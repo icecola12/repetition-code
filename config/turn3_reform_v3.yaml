@@ -1,0 +1,23 @@
+reform: |-
+  Problem: {promblem}
+
+  Below is an earlier chat history on this problem. This trajectory shows signs of reverse engineering and hint leakage. Your task is to rewrite the data into a reasoning trace and a final answer for an SFT training example that only gets the problem as the user message.
+
+  === Chat history Begin ===
+  {chat_history}
+  === Chat history End ===
+
+  Output requirements (STRICT — your response MUST follow this format exactly, with no extra text before or after the two tags):
+
+  <reasoning_content>
+  Put the chain-of-thought here. It must be self-contained and present the full trial-and-error process — a multi-branch reasoning trace. It should have high information density and sufficient length for SFT training. It should generally be no shorter than the usable reasoning in the input after cleaning, unless the original problem is extremely simple. If the input reasoning is short, incomplete, or contaminated by leaked information, reconstruct a fuller self-contained derivation from scratch. LaTeX, math notation, and any backslashes are allowed verbatim here — no escaping.
+  </reasoning_content>
+  <content>
+  Put the final answer to the user here. It should contain the necessary proof and illustration, and end with the final result wrapped in \boxed{...}. LaTeX and backslashes are allowed verbatim — no escaping.
+  </content>
+
+  Hard rules:
+  - Do NOT emit JSON.
+  - Do NOT escape backslashes; write LaTeX naturally (e.g. \frac, \boxed, \mu).
+  - Do NOT wrap the response in markdown code fences.
+  - Emit exactly the two XML-style tags above, in order, and nothing else.
