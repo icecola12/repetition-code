@@ -1,6 +1,6 @@
 # GitHub 上传工作日志
 
-**最后更新时间：2026-09-20 12:43 +0800**
+**最后更新时间：2026-09-20 12:47 +0800**
 
 ## 目标
 
@@ -17,6 +17,8 @@
 - **12:22**：完成 Python 语法检查；暂存区精确扫描确认无私有 IP、内部域名、本地项目绝对路径或明文凭据。
 - **12:42**：通过已授权的 GitHub CLI 凭据将提交 `7b6a265` 推送至远端 `main`。
 - **12:43**：拉取并核验远端引用；本地 `main` 与 `origin/main` 均指向 `7b6a2658a9dd72fd1b5fdf0ef92fd08831e4a16d`。
+- **12:46**：按用户确认，将两个提交的 author/committer 重写为 `xutiankuo`，邮箱使用 `icecola12` 的 GitHub noreply 地址。
+- **12:47**：将 GitHub 仓库由 `-` 更名为 `repetition-code`；新地址为 `https://github.com/icecola12/repetition-code`。
 
 ## 上传范围
 
@@ -37,4 +39,5 @@
 - Python 核心脚本语法检查通过。
 - Git 暂存区敏感信息检查通过。
 - 所有上传文件均低于 GitHub 单文件大小限制。
-- 本地与远端 `main` 提交哈希一致，首次上传完成。
+- 本地提交作者已统一为 `xutiankuo`；仓库已更名为 `repetition-code`。
+- 待完成：将重写后的提交历史安全更新到远端并复核 GitHub contributor 归属。
