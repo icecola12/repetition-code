@@ -76,8 +76,8 @@ def load_uuids(path: Path) -> set:
     return uuids
 
 
-def load_records(path: Path):
-    """Load all rows from a jsonl file. Skips malformed lines."""
+def load_records(path: Path, limit=None):
+    """Load rows from a JSONL file, stopping once limit is reached."""
     rows = []
     if not path.exists():
         return rows
@@ -88,6 +88,8 @@ def load_records(path: Path):
                 continue
             try:
                 rows.append(json.loads(line))
+                if limit is not None and len(rows) >= limit:
+                    break
             except Exception:
                 pass
     return rows
@@ -114,16 +116,13 @@ def trajectory_from_messages(messages: list) -> str:
     return build_trajectory(assistant.get("content", ""), assistant.get("reasoning_content", ""))
 
 
-# ---------- math user prompt ----------
-def build_math_prompt(problem: str) -> str:
-    return ("Solve the following math problem.\n"
-            "Make sure to put the answer (and only answer) inside "
-            "\\boxed{}.\n\n" + problem)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Streaming pipeline (rollout -> judge -> rerollout)")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--rollout-api-config",
+                        help="Separate rollout API YAML; falls back to --config")
+    parser.add_argument("--judge-api-config",
+                        help="Separate judge API YAML; falls back to --config")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--run-id", default="run")
@@ -153,32 +152,56 @@ def main():
 
     cfg_dir = cfg_path.parent
 
+    def _load_config(path):
+        with open(Path(path).resolve(), "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    rollout_api_cfg = _load_config(args.rollout_api_config) if args.rollout_api_config else cfg
+    judge_api_cfg = _load_config(args.judge_api_config) if args.judge_api_config else cfg
+    print(f"[INFO] rollout API config = {Path(args.rollout_api_config).resolve() if args.rollout_api_config else cfg_path}"
+          f"{' (legacy fallback)' if not args.rollout_api_config else ''}")
+    print(f"[INFO] judge API config = {Path(args.judge_api_config).resolve() if args.judge_api_config else cfg_path}"
+          f"{' (legacy fallback)' if not args.judge_api_config else ''}")
+
     ds_cfg = cfg["dataset"]
     uuid_key = ds_cfg["uuid_field"]
     prob_key = ds_cfg["problem_field"]
     ans_key = ds_cfg["expected_answer_field"]
 
+    project_root = cfg_dir.parent.parent if cfg_dir.name == "runtime" else cfg_dir.parent
+
     # ---- prompts ----
     prompts_cfg = cfg.get("prompts", {})
     def _resolve_prompt(rel):
-        # Try cfg_dir/.. relative (matches existing scripts), then cfg_dir, then absolute
-        for cand in [cfg_dir.parent / rel, cfg_dir / Path(rel).name, Path(rel)]:
+        path = Path(rel).expanduser()
+        candidates = [path] if path.is_absolute() else [
+            project_root / path,
+            cfg_dir / path,
+            cfg_dir / path.name,
+            Path.cwd() / path,
+        ]
+        for cand in candidates:
             if cand.exists():
-                return cand
-        raise FileNotFoundError(f"prompt template not found: {rel}")
+                return cand.resolve()
+        raise FileNotFoundError(f"prompt template not found: tried {candidates}")
 
+    rollout_template = load_yaml_field(
+        _resolve_prompt(prompts_cfg.get("rollout", "config/prompts/rollout_prompt.yaml")),
+        "rollout",
+    )
     rep_template = load_prompt_template(_resolve_prompt(prompts_cfg["repetition"]))
     corr_template = load_prompt_template(_resolve_prompt(prompts_cfg["correctness"]))
 
     rerollout_cfg = cfg.get("rerollout", {})
     rerollout_max_attempts = int(rerollout_cfg.get("max_rerollout_attempts", 3))
+    rerollout_force_correct = bool(rerollout_cfg.get("force_correct", False))
     # 剩余待处理条数 ≤ 该阈值时，attempt 由串行改为并行发起（0 = 关闭）。
     # 尾部并发池几乎空转，串行 N 轮往返是纯延迟浪费；代价是判对也会跑满 N 次。
     if args.parallel_tail_threshold is not None:
         rerollout_parallel_tail = int(args.parallel_tail_threshold)
     else:
         rerollout_parallel_tail = int(rerollout_cfg.get("parallel_tail_threshold", 0))
-    rerollout_prompt_rel = rerollout_cfg.get("prompt", "config/turn2_rerollout.yaml")
+    rerollout_prompt_rel = rerollout_cfg.get("prompt", "config/prompts/turn2_rerollout_v4.yaml")
     rerollout_template = load_yaml_field(_resolve_prompt(rerollout_prompt_rel), "rerollout")
 
     # Stage1 multi-attempt config
@@ -199,8 +222,10 @@ def main():
           f"parallel_tail_threshold={rerollout_parallel_tail}")
 
     # ---- clients ----
-    apex = cfg["qwen_apex"]
-    remote = cfg.get("qwen_remote")
+    if "qwen_apex" not in rollout_api_cfg:
+        raise SystemExit("Rollout API config missing qwen_apex")
+    apex = rollout_api_cfg["qwen_apex"]
+    remote = rollout_api_cfg.get("qwen_remote")
     qwen_client = ChatClient(
         base_urls=apex["base_urls"],
         model=apex["model"],
@@ -213,7 +238,7 @@ def main():
     # ---- judge clients (round-robin across all configured judges) ----
     judge_backends = []
     for section in ["kimi", "glm", "deepseek_397b"]:
-        jc = cfg.get(section)
+        jc = judge_api_cfg.get(section)
         if not jc:
             continue
         urls = jc.get("base_urls") or [jc["base_url"]]
@@ -288,9 +313,7 @@ def main():
 
     # ---- dataset ----
     ds_path = Path(args.dataset).resolve()
-    rows = load_records(ds_path)
-    if args.limit:
-        rows = rows[: args.limit]
+    rows = load_records(ds_path, args.limit)
     print(f"[INFO] loaded {len(rows)} dataset rows from {ds_path}")
 
     # ---- resume state (uuid sets) ----
@@ -395,6 +418,20 @@ def main():
             )
             pred = extract_boxed(content) or extract_boxed(reasoning) or ""
 
+            if rerollout_force_correct:
+                return {
+                    "attempt": n + 1,
+                    "predicted_answer": pred,
+                    "is_correct": True,
+                    "forced_correct": True,
+                    "force_reason": "User-authorized end-to-end Stage 2/3 validation; judge quota unavailable.",
+                    "assistant_message": {
+                        "role": "assistant",
+                        "reasoning_content": reasoning,
+                        "content": content,
+                    },
+                }
+
             corr_prompt = render_template(
                 corr_template,
                 problem=problem,
@@ -474,7 +511,7 @@ def main():
             }
             if final is not None:
                 record["final_predicted_answer"] = final["predicted_answer"]
-                user_prompt = build_math_prompt(problem)
+                user_prompt = render_template(rollout_template, problem=problem)
                 record["final_messages"] = [
                     {"role": "user", "content": user_prompt},
                     final["assistant_message"],
@@ -493,7 +530,7 @@ def main():
         """单次独立 stage1 尝试：rollout + repetition judge。
         各次 attempt 互不依赖，可并行发起 — 全部跑完后再由调用方聚合计数。"""
         try:
-            user_prompt = build_math_prompt(problem)
+            user_prompt = render_template(rollout_template, problem=problem)
             msgs = [{"role": "user", "content": user_prompt}]
             content, reasoning = qwen_client.chat_with_retry(
                 msgs,

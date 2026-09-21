@@ -1,0 +1,28 @@
+benchmarks:
+  aime2026:
+    path: /replace/with/local/path/aime_2026.json
+    format: json
+    problem_field: problem
+    answer_field: answer
+    pass_k: 16
+
+  hmmt2026:
+    path: /replace/with/local/path/hmmt_feb_2026.json
+    format: json
+    problem_field: problem
+    answer_field: answer
+    pass_k: 16
+
+  imo_answerbench:
+    path: /replace/with/local/path/imo-answerbench.json
+    format: json
+    problem_field: problem
+    answer_field: answer
+    pass_k: 8
+
+  math500:
+    path: /replace/with/local/path/math500.json
+    format: json
+    problem_field: problem
+    answer_field: answer
+    pass_k: 4

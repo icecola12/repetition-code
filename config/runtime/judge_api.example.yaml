@@ -1,0 +1,12 @@
+# Configure at least one supported backend.
+deepseek_397b:
+  base_url: https://judge-api.example.com/v1
+  model: judge-model
+  api_key: replace-with-local-secret
+  max_concurrency: 16
+  judge_max_tokens: 8192
+  judge_temperature: 0.1
+  judge_infinite_retry: false
+  model_name: judge-display-name
+
+# Other supported top-level keys: kimi, glm
