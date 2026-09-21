@@ -188,7 +188,7 @@ input JSONL
   │
   ├─ Stage 1: rollout + repetition judge
   │    ├─ stage1/trajectory_raw.jsonl
-  │    ├─ stage1/no_repetition.jsonl        → Stage 1 训练候选
+  │    ├─ stage1/no_repetition.jsonl        
   │    └─ stage1/has_repetition.jsonl       → Stage 2 输入
   │
   ├─ Stage 2: rerollout + correctness judge
