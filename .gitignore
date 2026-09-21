@@ -6,15 +6,23 @@ __pycache__/
 venv/
 
 # Local runtime configurations and credentials
-config/inference_config*.yaml
-config/deepseek.yaml
+config/runtime/inference_config*.yaml
+config/runtime/deepseek.yaml
+config/runtime/pipeline.yaml
+config/runtime/rollout_api.yaml
+config/runtime/judge_api.yaml
+config/runtime/eval_benchmarks.yaml
+config/runtime/eval_model_b.yaml
 .env
 .env.*
 
 # Generated data and experiment artifacts
 raw_data/
-data/
+data/*
+!data/README.md
+!data/example_input.jsonl
 output/
+pipeline_results/
 run/
 log/
 logs/
@@ -26,6 +34,7 @@ expB/
 idea_2_dapo/
 stats/
 eval/
+eval_results/
 
 # Logs, backups, and temporary files
 *.log

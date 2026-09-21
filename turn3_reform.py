@@ -57,7 +57,12 @@ def _latency_report() -> str:
         lines.append(f"{phase}: n={n}, total={t:.1f}s, avg={avg:.1f}s")
     return "  |  ".join(lines)
 
-from share_utils import MultiJudgeClient
+from share_utils import (
+    MultiJudgeClient,
+    load_yaml_field,
+    parse_correctness_judgement,
+    render_template,
+)
 
 
 class ChatClient:
@@ -93,22 +98,6 @@ class ChatClient:
         content = msg.content or ""
         reasoning = getattr(msg, "reasoning_content", "") or ""
         return content, reasoning
-
-
-# ============================================================
-# 模板工具
-# ============================================================
-def load_prompt_template(path: Path, key: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    return data[key]
-
-
-def render_template(template: str, **kwargs) -> str:
-    result = template
-    for k, v in kwargs.items():
-        result = result.replace("{" + k + "}", str(v or ""))
-    return result
 
 
 # ============================================================
@@ -183,27 +172,32 @@ def parse_reform_json(content_text: str) -> tuple:
 # ============================================================
 # Kimi Judge
 # ============================================================
-def judge_correctness(judge_client, problem: str, expected_answer: str,
-                      predicted_answer: str, judge_max_tokens: int, judge_temperature: float) -> bool:
-    judge_prompt = (
-        "You are a math judge. Compare the predicted answer with the expected answer and "
-        "judge whether they are mathematically equivalent within the context of the problem.\n\n"
-        f"Problem: {problem}\n\n"
-        f"Predicted answer: {predicted_answer}\n"
-        f"Expected answer: {expected_answer}\n\n"
-        "Please respond with only Yes or No."
+def judge_correctness(judge_client, judge_template: str, problem: str,
+                      expected_answer: str, predicted_answer: str,
+                      judge_max_tokens: int, judge_temperature: float) -> Optional[bool]:
+    judge_prompt = render_template(
+        judge_template,
+        problem=problem,
+        predicted_answer=(predicted_answer if predicted_answer else "(empty)"),
+        expected_answer=(expected_answer if expected_answer else "(unknown)"),
     )
     # 本地 ChatClient 只有 chat(); MultiJudgeClient.chat 每次调用轮转到下一个后端,
     # 因此这里的重试天然分散到不同 judge 后端
     last_err = None
     for attempt in range(5):
         try:
-            content, _ = judge_client.chat([{"role": "user", "content": judge_prompt}],
-                                           max_tokens=judge_max_tokens, temperature=judge_temperature)
-            return "yes" in (content or "").strip().lower()
+            content, reasoning = judge_client.chat(
+                [{"role": "user", "content": judge_prompt}],
+                max_tokens=judge_max_tokens,
+                temperature=judge_temperature,
+            )
+            verdict = parse_correctness_judgement(content, reasoning)
+            if verdict is not None:
+                return verdict
+            last_err = ValueError("unparseable judge response")
         except Exception as e:
             last_err = e
-            time.sleep(min(30.0, 2.0 ** attempt))
+        time.sleep(min(30.0, 2.0 ** attempt))
     # 调用失败 ≠ 判错: 返回 None, 上层不计入重试次数并补发 (避免 judge 服务故障
     # 期间把样本静默写成 incorrect 假阴性)
     print(f"[WARN] judge call failed after retries (not counted as attempt): {last_err}",
@@ -215,8 +209,12 @@ def judge_correctness(judge_client, problem: str, expected_answer: str,
 # Main
 # ============================================================
 def main():
-    parser = argparse.ArgumentParser(description="Turn3 Reform + Kimi judge")
+    parser = argparse.ArgumentParser(description="Turn3 Reform + correctness judge")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--rollout-api-config",
+                        help="Separate rollout API YAML; falls back to --config")
+    parser.add_argument("--judge-api-config",
+                        help="Separate judge API YAML; falls back to --config")
     parser.add_argument("--input-file", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--sample-size", type=int, default=0,
@@ -236,22 +234,50 @@ def main():
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
+    def _load_config(path):
+        with open(Path(path).resolve(), "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    rollout_api_cfg = _load_config(args.rollout_api_config) if args.rollout_api_config else cfg
+    judge_api_cfg = _load_config(args.judge_api_config) if args.judge_api_config else cfg
+    print(f"[INFO] rollout API config = {Path(args.rollout_api_config).resolve() if args.rollout_api_config else cfg_path}"
+          f"{' (legacy fallback)' if not args.rollout_api_config else ''}")
+    print(f"[INFO] judge API config = {Path(args.judge_api_config).resolve() if args.judge_api_config else cfg_path}"
+          f"{' (legacy fallback)' if not args.judge_api_config else ''}")
+
+    cfg_dir = cfg_path.parent
+    project_root = cfg_dir.parent.parent if cfg_dir.name == "runtime" else cfg_dir.parent
+
+    def _resolve_prompt(rel):
+        path = Path(rel).expanduser()
+        candidates = [path] if path.is_absolute() else [
+            project_root / path,
+            cfg_dir / path,
+            cfg_dir / path.name,
+            Path.cwd() / path,
+        ]
+        prompt_path = next((p for p in candidates if p.exists()), None)
+        if prompt_path is None:
+            raise FileNotFoundError(f"prompt template not found: tried {candidates}")
+        return prompt_path.resolve()
+
     # Reform prompt 模板（含 {promblem} 和 {chat_history}） — 路径从 config 读取
     turn3_cfg = cfg.get("turn3_reform", {}) or {}
-    prompt_rel = turn3_cfg.get("prompt", "config/turn3_reform_v3.yaml")
-    # 解析 prompt 路径: 先相对 config 父目录, 再当作绝对路径
-    cfg_dir = cfg_path.parent
-    prompt_candidates = [cfg_dir.parent / prompt_rel, cfg_dir / Path(prompt_rel).name, Path(prompt_rel)]
-    prompt_path = next((p for p in prompt_candidates if p.exists()), None)
-    if prompt_path is None:
-        raise FileNotFoundError(f"turn3_reform prompt not found: tried {prompt_candidates}")
+    prompt_rel = turn3_cfg.get("prompt", "config/prompts/turn3_reform_v3.yaml")
+    prompt_path = _resolve_prompt(prompt_rel)
     print(f"[INFO] turn3_reform prompt = {prompt_path}")
-    reform_prompt = load_prompt_template(prompt_path, "reform")
+    reform_prompt = load_yaml_field(prompt_path, "reform")
+
+    prompts_cfg = cfg.get("prompts", {})
+    correctness_path = _resolve_prompt(prompts_cfg["correctness"])
+    correctness_template = load_yaml_field(correctness_path, "judge")
+    print(f"[INFO] correctness prompt = {correctness_path}")
 
     # 解析失败时的重试次数 (call Qwen 重新生成)
     parse_max_retries = int(turn3_cfg.get("parse_max_retries", 3))
     # 判错重试直到判对的最大尝试次数 (默认 1 = 旧行为)
     max_reform_attempts = int(turn3_cfg.get("max_reform_attempts", 1))
+    reform_force_correct = bool(turn3_cfg.get("force_correct", False))
     # 剩余待处理条数 ≤ 该阈值时，attempt 由串行改为并行发起（0 = 关闭）。
     # 尾部并发池几乎空转，串行 N 轮往返是纯延迟浪费；代价是判对也会跑满 N 次。
     if args.parallel_tail_threshold is not None:
@@ -260,7 +286,9 @@ def main():
         parallel_tail_threshold = int(turn3_cfg.get("parallel_tail_threshold", 0))
 
     # Qwen client
-    qwen_cfg = cfg["qwen_apex"]
+    if "qwen_apex" not in rollout_api_cfg:
+        raise SystemExit("Rollout API config missing qwen_apex")
+    qwen_cfg = rollout_api_cfg["qwen_apex"]
     qwen_client = ChatClient(
         base_urls=qwen_cfg["base_urls"],
         model=qwen_cfg.get("model", "default"),
@@ -270,7 +298,7 @@ def main():
     # Judge clients (round-robin across all configured judges)
     judge_backends = []
     for section in ["kimi", "glm", "deepseek_397b"]:
-        jc = cfg.get(section)
+        jc = judge_api_cfg.get(section)
         if not jc:
             continue
         urls = jc.get("base_urls") or ([jc["base_url"]] if "base_url" in jc else [])
@@ -453,9 +481,16 @@ def main():
         if reform_reasoning is None or reform_content is None:
             return {"attempt": n + 1, "error": "parse_failed"}
 
-        # 用 Kimi 判对; 调用失败返回 None → 记为 judge_failed, 不计入重试次数, 由上层补发
-        verdict = judge_correctness(judges, problem, expected_answer, reform_content,
-                                    judge_max_tokens, judge_temperature)
+        # 用 correctness judge 判对；端到端验证可由本地配置显式强制通过。
+        if reform_force_correct:
+            verdict = True
+            forced_correct = True
+        else:
+            verdict = judge_correctness(
+                judges, correctness_template, problem, expected_answer, reform_content,
+                judge_max_tokens, judge_temperature,
+            )
+            forced_correct = False
         if verdict is None:
             return {"attempt": n + 1, "error": "judge_failed"}
 
@@ -464,6 +499,11 @@ def main():
             "reform_reasoning": reform_reasoning,
             "reform_content": reform_content,
             "is_correct": verdict,
+            "forced_correct": forced_correct,
+            "force_reason": (
+                "User-authorized end-to-end Stage 2/3 validation; judge quota unavailable."
+                if forced_correct else None
+            ),
         }
 
     def do_one(item):

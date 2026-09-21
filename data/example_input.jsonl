@@ -1,0 +1,1 @@
+{"uuid": "3a4eea12-b279-4e60-ae91-2bc6b24f1ece", "problem": "Find a polynomial $\\phi \\in K[X_1, X_2, \\ldots, X_n]$ whose only zero is $(0,0,\\ldots,0)$, given that $K$ is not algebraically closed.", "expected_answer": "\\ \\phi(X_{1},\\dots ,X_{n})\n       = N_{\\,K[t]/(p)/K}\\!\\bigl( X_{1}+X_{2}t+\\cdots+X_{n}t^{\\,n-1}\\bigr) "}

@@ -1,0 +1,11 @@
+qwen_apex:
+  base_urls:
+    - https://rollout-api.example.com/v1
+  model: rollout-model
+  api_key: replace-with-local-secret
+  max_concurrency: 32
+
+# Optional second endpoint pool:
+# qwen_remote:
+#   base_urls: [https://rollout-remote.example.com/v1]
+#   max_concurrency: 16

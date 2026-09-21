@@ -356,23 +356,31 @@ def main():
 
     rerollout_cfg = cfg.get("rerollout", {})
     max_attempts = rerollout_cfg.get("max_rerollout_attempts", 3)
-    prompt_rel = rerollout_cfg.get("prompt", "config/turn2_rerollout.yaml")
+    prompt_rel = rerollout_cfg.get("prompt", "config/prompts/turn2_rerollout_v4.yaml")
 
-    # Resolve rerollout prompt template path relative to config directory
     cfg_dir = cfg_path.parent
-    rerollout_prompt_path = (cfg_dir / ".." / prompt_rel).resolve()
-    if not rerollout_prompt_path.exists():
-        # Fallback: try relative to cwd
-        rerollout_prompt_path = Path(prompt_rel).resolve()
+    project_root = cfg_dir.parent.parent if cfg_dir.name == "runtime" else cfg_dir.parent
 
+    def resolve_prompt(value):
+        path = Path(value).expanduser()
+        candidates = [path] if path.is_absolute() else [
+            project_root / path,
+            cfg_dir / path,
+            cfg_dir / path.name,
+            Path.cwd() / path,
+        ]
+        resolved = next((candidate for candidate in candidates if candidate.exists()), None)
+        if resolved is None:
+            raise FileNotFoundError(f"prompt template not found: tried {candidates}")
+        return resolved.resolve()
+
+    rerollout_prompt_path = resolve_prompt(prompt_rel)
     rerollout_template = load_yaml_key(rerollout_prompt_path, "rerollout")
     print(f"[INFO] rerollout prompt loaded from: {rerollout_prompt_path}")
 
     # Resolve correctness judge template
     judge_rel = cfg["prompts"]["correctness"]
-    judge_path = (cfg_dir / ".." / judge_rel).resolve()
-    if not judge_path.exists():
-        judge_path = (cfg_dir / Path(judge_rel).name).resolve()
+    judge_path = resolve_prompt(judge_rel)
     correctness_template = load_yaml_key(judge_path, "judge")
     print(f"[INFO] judge prompt loaded from: {judge_path}")
 

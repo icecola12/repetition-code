@@ -1,0 +1,14 @@
+comparison_id: comparison_b
+output_root: eval_results
+benchmark_config: config/runtime/eval_benchmarks.yaml
+judge_api_config: config/runtime/judge_api.yaml
+judge_backend: deepseek_397b
+judge_prompt: config/prompts/judge_prompt.yaml
+
+sampling:
+  pass_k: 8
+  temperature: 0.6
+  top_p: 1.0
+  max_tokens: 32768
+  max_concurrent: 40
+  no_thinking: false

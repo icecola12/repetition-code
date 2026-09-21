@@ -1,0 +1,8 @@
+{
+  "example_id": 0,
+  "rollout_id": 1,
+  "score": 1.0,
+  "answer": "A",
+  "prompt": [{"role": "user", "content": "P"}],
+  "response": [{"role": "assistant", "content": "A"}]
+}
